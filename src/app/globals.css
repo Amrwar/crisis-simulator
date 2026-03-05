@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-bg-primary text-text-primary;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-bg-secondary;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-bg-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2a3a52;
+  }
+}
+
+@layer components {
+  .metric-card {
+    @apply bg-bg-card border border-bg-border rounded-lg p-3;
+  }
+
+  .glass-panel {
+    @apply bg-bg-card border border-bg-border rounded-xl;
+  }
+
+  .text-danger { @apply text-accent-red; }
+  .text-warning { @apply text-accent-orange; }
+  .text-success { @apply text-accent-green; }
+  .text-info { @apply text-accent-blue; }
+
+  .tag-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-bg-secondary border border-bg-border text-text-secondary;
+  }
+
+  .btn-primary {
+    @apply bg-accent-blue hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply bg-accent-red hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-150;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent hover:bg-bg-hover text-text-secondary hover:text-text-primary border border-bg-border py-2 px-4 rounded-lg transition-all duration-150;
+  }
+
+  .input-field {
+    @apply w-full bg-bg-secondary border border-bg-border rounded-lg px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue focus:ring-1 focus:ring-accent-blue transition-colors;
+  }
+
+  .option-card {
+    @apply relative cursor-pointer border rounded-lg p-4 transition-all duration-150;
+  }
+
+  .option-card-low {
+    @apply border-bg-border hover:border-accent-green hover:bg-green-950/20;
+  }
+
+  .option-card-medium {
+    @apply border-bg-border hover:border-accent-yellow hover:bg-yellow-950/20;
+  }
+
+  .option-card-high {
+    @apply border-bg-border hover:border-accent-red hover:bg-red-950/20;
+  }
+
+  .option-card-selected-low {
+    @apply border-accent-green bg-green-950/30;
+  }
+
+  .option-card-selected-medium {
+    @apply border-accent-yellow bg-yellow-950/30;
+  }
+
+  .option-card-selected-high {
+    @apply border-accent-red bg-red-950/30;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+}

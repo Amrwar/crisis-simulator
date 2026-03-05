@@ -1,0 +1,125 @@
+// Prisma schema for CrisisSim
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime     @default(now())
+  simulations  Simulation[]
+}
+
+model Simulation {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Setup
+  industry   String // Retail, Restaurant, SaaS, Construction, Healthcare
+  difficulty String // Easy, Medium, Hard
+  companySize String // Small, Medium
+
+  // Company profile (from AI)
+  companyName       String  @default("")
+  companyLocation   String  @default("Cairo, Egypt")
+  startingSituation String  @default("")
+
+  // Competitor info
+  competitorName     String  @default("")
+  competitorStrategy String  @default("price_war") // price_war|premium_brand|fast_expansion|poach_talent
+  competitorStrength Float   @default(50)
+
+  // ─── Visible Metrics ───────────────────────────────────────────
+  cash           Float
+  monthlyRevenue Float
+  burnRate       Float
+  reputation     Float @default(70)
+  morale         Float @default(70)
+  churn          Float @default(20)
+  legalRisk      Float @default(10)
+  marketShare    Float @default(20)
+
+  // ─── Hidden Variables ──────────────────────────────────────────
+  supplierReliability  Float @default(70)
+  employeeLoyalty      Float @default(70)
+  demandVolatility     Float @default(30)
+  competitorAggression Float @default(40)
+
+  // ─── Gameplay State ────────────────────────────────────────────
+  // Flags stored as JSON string e.g. {"took_loan":true,"layoffs_done":true}
+  flags       String @default("{}")
+  currentTurn Int    @default(0)
+  maxTurns    Int    @default(10)
+  status      String @default("active") // active | ended
+  endingType  String @default("") // growth_win|survival|takeover|bankruptcy|scandal
+
+  // Seeded RNG seed (integer)
+  seed Int
+
+  // Final report (JSON string, set when ended)
+  finalReport String @default("")
+
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  turns        Turn[]
+  achievements Achievement[]
+}
+
+model Turn {
+  id           String     @id @default(cuid())
+  simulationId String
+  simulation   Simulation @relation(fields: [simulationId], references: [id])
+
+  turnNumber Int
+
+  // Event content (from AI) — stored as JSON strings
+  title             String
+  narrative         String
+  characterMessages String // JSON: [{from, message}]
+  newsOrSocial      String @default("") // JSON: {type, text} or empty
+  options           String // JSON: [{id,text,risk,tags}]
+
+  // Decision
+  optionId String @default("") // "A"|"B"|"C"|"D" if chose option
+  freeText String @default("") // if free-text decision
+  tags     String @default("[]") // JSON array of tag strings
+
+  // Metric deltas applied this turn (JSON)
+  metricDeltas String @default("{}")
+
+  // Snapshot of metrics AFTER this turn is processed
+  cashAfter        Float @default(0)
+  revenueAfter     Float @default(0)
+  burnRateAfter    Float @default(0)
+  reputationAfter  Float @default(0)
+  moraleAfter      Float @default(0)
+  churnAfter       Float @default(0)
+  legalRiskAfter   Float @default(0)
+  marketShareAfter Float @default(0)
+
+  // Coach feedback (generated with next turn)
+  coachFeedback    String @default("")
+  coachWhyMatters  String @default("")
+
+  createdAt DateTime  @default(now())
+  decidedAt DateTime?
+}
+
+model Achievement {
+  id           String     @id @default(cuid())
+  simulationId String
+  simulation   Simulation @relation(fields: [simulationId], references: [id])
+
+  type       String   // crisis_manager|negotiator|turnaround|brand_guardian
+  unlockedAt DateTime @default(now())
+}
