@@ -78,7 +78,7 @@ export default function NewSimPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed to create simulation');
+        setError((data.error || 'Failed to create simulation') + (data.details ? ` — ${data.details}` : ''));
         return;
       }
 
