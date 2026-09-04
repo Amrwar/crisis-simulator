@@ -86,7 +86,7 @@ export function Timeline({ turns, currentTurn }: TimelineProps) {
               </div>
 
               {/* Decision */}
-              <p className="text-text-muted italic mb-2">"{decision}"</p>
+              <p className="text-text-muted italic mb-2">&quot;{decision}&quot;</p>
 
               {/* Tags */}
               {turn.tags && turn.tags.length > 0 && (

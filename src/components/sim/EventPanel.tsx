@@ -144,7 +144,7 @@ export function EventPanel({
               {newsOrSocial.type === 'news' ? 'News Headline' : 'Social Media'}
             </span>
           </div>
-          <p className="text-sm text-text-primary italic">"{newsOrSocial.text}"</p>
+          <p className="text-sm text-text-primary italic">&quot;{newsOrSocial.text}&quot;</p>
         </div>
       )}
 
