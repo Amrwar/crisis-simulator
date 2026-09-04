@@ -1,0 +1,17 @@
+{
+  "//": "Type-checks the test suite and its vitest config. Kept out of tsconfig.json so that `next build` — which type-checks whatever the root config includes — never needs the test-only devDependencies. `npm run typecheck` runs both configs.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.test.tsbuildinfo"
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "vitest.config.ts"
+  ],
+  "exclude": ["node_modules"]
+}

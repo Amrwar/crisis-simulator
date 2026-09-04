@@ -58,3 +58,6 @@ desktop.ini
 
 # Vercel
 .vercel
+
+# Derived SQLite schema, generated client and throwaway database used by the test suite
+prisma/.test/
