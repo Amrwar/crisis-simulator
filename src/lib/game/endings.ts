@@ -146,6 +146,21 @@ export function checkAchievements(
     unlocked.push('brand_guardian');
   }
 
+  // Market Leader: take a commanding share of the market
+  if (metrics.marketShare >= 40 && !alreadyHas('market_leader')) {
+    unlocked.push('market_leader');
+  }
+
+  // People First: a workforce still with you past the halfway mark
+  if (metrics.morale >= 85 && turnNumber >= 5 && !alreadyHas('people_first')) {
+    unlocked.push('people_first');
+  }
+
+  // Clean Books: reach the end having never borrowed
+  if (turnNumber >= maxTurns && !flags['took_loan'] && !alreadyHas('clean_books')) {
+    unlocked.push('clean_books');
+  }
+
   return unlocked;
 }
 
@@ -169,6 +184,21 @@ export const ACHIEVEMENT_META: Record<string, { label: string; description: stri
     label: 'Brand Guardian',
     description: 'Maintained reputation above 80 through at least 5 turns.',
     emoji: '⭐',
+  },
+  market_leader: {
+    label: 'Market Leader',
+    description: 'Took a 40% share of the market.',
+    emoji: '📊',
+  },
+  people_first: {
+    label: 'People First',
+    description: 'Held employee morale above 85 past the halfway mark.',
+    emoji: '💙',
+  },
+  clean_books: {
+    label: 'Clean Books',
+    description: 'Reached the final turn without ever taking a loan.',
+    emoji: '📒',
   },
 };
 

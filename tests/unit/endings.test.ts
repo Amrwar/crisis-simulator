@@ -229,11 +229,60 @@ describe('checkAchievements', () => {
     ).not.toContain('brand_guardian');
   });
 
-  it('never re-awards an achievement the player already holds', () => {
-    const already = ['crisis_manager', 'negotiator', 'turnaround', 'brand_guardian'];
+  it('unlocks market_leader at a commanding share and not below it', () => {
+    expect(
+      checkAchievements(metrics({ marketShare: 40 }), 3, MAX_TURNS, {}, STARTING_CASH, nothing, 0)
+    ).toContain('market_leader');
+    expect(
+      checkAchievements(metrics({ marketShare: 39 }), 3, MAX_TURNS, {}, STARTING_CASH, nothing, 0)
+    ).not.toContain('market_leader');
+  });
+
+  it('unlocks people_first for sustained morale, not an early spike', () => {
+    expect(
+      checkAchievements(metrics({ morale: 85 }), 5, MAX_TURNS, {}, STARTING_CASH, nothing, 0)
+    ).toContain('people_first');
+    expect(
+      checkAchievements(metrics({ morale: 85 }), 4, MAX_TURNS, {}, STARTING_CASH, nothing, 0)
+    ).not.toContain('people_first');
+    expect(
+      checkAchievements(metrics({ morale: 84 }), 8, MAX_TURNS, {}, STARTING_CASH, nothing, 0)
+    ).not.toContain('people_first');
+  });
+
+  it('unlocks clean_books only for a full run that never borrowed', () => {
+    expect(
+      checkAchievements(metrics(), MAX_TURNS, MAX_TURNS, {}, STARTING_CASH, nothing, 0)
+    ).toContain('clean_books');
     expect(
       checkAchievements(
-        metrics({ reputation: 95 }),
+        metrics(),
+        MAX_TURNS,
+        MAX_TURNS,
+        { took_loan: true },
+        STARTING_CASH,
+        nothing,
+        0
+      )
+    ).not.toContain('clean_books');
+    expect(
+      checkAchievements(metrics(), MAX_TURNS - 1, MAX_TURNS, {}, STARTING_CASH, nothing, 0)
+    ).not.toContain('clean_books');
+  });
+
+  it('never re-awards an achievement the player already holds', () => {
+    const already = [
+      'crisis_manager',
+      'negotiator',
+      'turnaround',
+      'brand_guardian',
+      'market_leader',
+      'people_first',
+      'clean_books',
+    ];
+    expect(
+      checkAchievements(
+        metrics({ reputation: 95, morale: 95, marketShare: 60 }),
         MAX_TURNS,
         MAX_TURNS,
         { was_in_crisis: true },
@@ -246,7 +295,7 @@ describe('checkAchievements', () => {
 
   it('can unlock several achievements in the same turn', () => {
     const unlocked = checkAchievements(
-      metrics({ reputation: 95, cash: 900_000 }),
+      metrics({ reputation: 95, morale: 95, marketShare: 60, cash: 900_000 }),
       MAX_TURNS,
       MAX_TURNS,
       { was_in_crisis: true },
@@ -255,7 +304,15 @@ describe('checkAchievements', () => {
       5
     );
     expect(unlocked.sort()).toEqual(
-      ['brand_guardian', 'crisis_manager', 'negotiator', 'turnaround'].sort()
+      [
+        'brand_guardian',
+        'clean_books',
+        'crisis_manager',
+        'market_leader',
+        'negotiator',
+        'people_first',
+        'turnaround',
+      ].sort()
     );
   });
 });
@@ -279,7 +336,7 @@ describe('presentation metadata', () => {
 
   it('describes every achievement the engine can unlock', () => {
     const everyAchievement = checkAchievements(
-      metrics({ reputation: 95 }),
+      metrics({ reputation: 95, morale: 95, marketShare: 60 }),
       MAX_TURNS,
       MAX_TURNS,
       { was_in_crisis: true },
@@ -287,7 +344,7 @@ describe('presentation metadata', () => {
       [],
       5
     );
-    expect(everyAchievement.length).toBe(4);
+    expect(everyAchievement.length).toBe(7);
     for (const type of everyAchievement) {
       expect(ACHIEVEMENT_META[type], type).toBeDefined();
       expect(ACHIEVEMENT_META[type].label.length, type).toBeGreaterThan(0);
