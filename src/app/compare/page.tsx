@@ -15,6 +15,7 @@ import { comparisonHeadline } from '@/lib/analytics/compare';
 import { ApiError, apiGet, messageFor } from '@/lib/client/api';
 import { fetchCurrentUser, type CurrentUser } from '@/lib/client/session';
 import { formatCompactAmount, humanizeTag, ordinal, pluralize } from '@/lib/format';
+import type { SimulationSearchPayload } from '@/lib/simulations/results';
 import { METRIC_META, type VisibleMetricKey } from '@/types';
 
 const COLOR_A = '#3b82f6';
@@ -53,14 +54,21 @@ function CompareBody() {
     fetchCurrentUser().then(setUser);
   }, []);
 
-  // The run picker lists only finished runs: a comparison of a run in progress
-  // against a finished one would compare an unfinished trajectory.
+  /**
+   * The run picker lists only finished runs: a comparison of a run in progress
+   * against a finished one would compare an unfinished trajectory.
+   *
+   * That narrowing is the search endpoint's rather than the browser's. Reading
+   * the unpaged list and discarding the active runs here meant downloading
+   * every run the player had ever started to fill one dropdown, and getting
+   * slower with each new one. `pageSize` bounds it at the hundred most recent
+   * finished runs, well past the point a dropdown stays usable.
+   */
   useEffect(() => {
-    fetch('/api/simulations')
-      .then((response) => (response.ok ? response.json() : []))
-      .then((rows: Array<RunOption & { status: string }>) => {
-        setRuns(rows.filter((row) => row.status === 'ended'));
-      })
+    apiGet<SimulationSearchPayload>(
+      '/api/simulations/search?status=ended&sort=createdAt&direction=desc&pageSize=100'
+    )
+      .then((payload) => setRuns(payload.page.items))
       .catch(() => setRuns([]));
   }, []);
 
