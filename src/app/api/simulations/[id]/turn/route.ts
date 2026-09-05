@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { extractTagsFromKeywords, filterValidTags, type DecisionTag } from '@/lib/game/tags';
-import { applyRules, computePerformanceScore } from '@/lib/game/rules-engine';
-import { checkEnding, checkAchievements } from '@/lib/game/endings';
+import { computePerformanceScore } from '@/lib/game/rules-engine';
+import { advanceTurn } from '@/lib/game/turn-engine';
+import { parseFlags } from '@/lib/json';
 import { generateNextTurn, generateFinalReport, suggestTags } from '@/lib/llm';
 
 const DecisionSchema = z.object({
@@ -80,62 +81,53 @@ export async function POST(
       if (tags.length === 0) tags = ['cut_costs'];
     }
 
-    // ── 2. Apply rules engine ──────────────────────────────────────────────────
-    const flags: Record<string, unknown> = JSON.parse(sim.flags);
+    // ── 2. Resolve the turn ────────────────────────────────────────────────────
+    // The rules engine, the flag bookkeeping, the ending check and the
+    // achievement check all live in advanceTurn, which the replay endpoint
+    // re-runs against a stored run.
+    const flags = parseFlags(sim.flags);
+    const firstTurnCash = sim.turns[0]?.cashAfter ?? sim.cash;
 
-    const rulesOutput = applyRules({
-      metrics: {
-        cash: sim.cash,
-        monthlyRevenue: sim.monthlyRevenue,
-        burnRate: sim.burnRate,
-        reputation: sim.reputation,
-        morale: sim.morale,
-        churn: sim.churn,
-        legalRisk: sim.legalRisk,
-        marketShare: sim.marketShare,
-      },
-      hidden: {
-        supplierReliability: sim.supplierReliability,
-        employeeLoyalty: sim.employeeLoyalty,
-        demandVolatility: sim.demandVolatility,
-        competitorAggression: sim.competitorAggression,
-      },
-      competitor: {
-        competitorStrength: sim.competitorStrength,
-        competitorStrategy: sim.competitorStrategy,
+    const outcome = advanceTurn(
+      {
+        metrics: {
+          cash: sim.cash,
+          monthlyRevenue: sim.monthlyRevenue,
+          burnRate: sim.burnRate,
+          reputation: sim.reputation,
+          morale: sim.morale,
+          churn: sim.churn,
+          legalRisk: sim.legalRisk,
+          marketShare: sim.marketShare,
+        },
+        hidden: {
+          supplierReliability: sim.supplierReliability,
+          employeeLoyalty: sim.employeeLoyalty,
+          demandVolatility: sim.demandVolatility,
+          competitorAggression: sim.competitorAggression,
+        },
+        competitor: {
+          competitorStrength: sim.competitorStrength,
+          competitorStrategy: sim.competitorStrategy,
+        },
+        flags,
+        currentTurn: sim.currentTurn,
+        maxTurns: sim.maxTurns,
+        difficulty: sim.difficulty,
+        seed: sim.seed,
+        startingCash: firstTurnCash,
       },
       tags,
-      difficulty: sim.difficulty,
-      simSeed: sim.seed,
-      turnNumber: sim.currentTurn,
-      flags,
-    });
-
-    const newMetrics = rulesOutput.metrics;
-    const newHidden = rulesOutput.hidden;
-
-    // Update flags — stored as Record<string, unknown> to allow numeric counters
-    const updatedFlags: Record<string, unknown> = { ...flags };
-    for (const f of rulesOutput.newFlags) updatedFlags[f] = true;
-
-    // Track if company was ever in crisis (for turnaround achievement)
-    const firstTurnCash = sim.turns[0]?.cashAfter ?? sim.cash;
-    if (newMetrics.cash < firstTurnCash * 0.2) updatedFlags['was_in_crisis'] = true;
-
-    // Track negotiation count (for negotiator achievement)
-    if (tags.includes('negotiate_supplier')) {
-      const prevCount = (updatedFlags['negotiation_count_num'] as number) ?? 0;
-      updatedFlags['negotiation_count_num'] = prevCount + 1;
-    }
-
-    // ── 3. Check endings ──────────────────────────────────────────────────────
-    const ending = checkEnding(
-      newMetrics,
-      sim.currentTurn,
-      sim.maxTurns,
-      updatedFlags,
-      firstTurnCash
+      sim.achievements.map((a) => a.type)
     );
+
+    const newMetrics = outcome.metrics;
+    const newHidden = outcome.hidden;
+    const updatedFlags = outcome.flags;
+    const rulesOutput = outcome;
+
+    // ── 3. Endings ────────────────────────────────────────────────────────────
+    const ending = outcome.ending;
 
     const nextTurnNumber = sim.currentTurn + 1;
     const isEnded = ending.ended;
@@ -278,18 +270,11 @@ export async function POST(
       }
     }
 
-    // ── 6. Check achievements ─────────────────────────────────────────────────
-    const existingAchievements = sim.achievements.map((a) => a.type);
-    const negotiationCount = (updatedFlags['negotiation_count_num'] as number) ?? 0;
-    const newAchievements = checkAchievements(
-      newMetrics,
-      isEnded ? sim.currentTurn : nextTurnNumber - 1,
-      sim.maxTurns,
-      updatedFlags,
-      firstTurnCash,
-      existingAchievements,
-      negotiationCount
-    );
+    // ── 6. Record achievements ────────────────────────────────────────────────
+    // advanceTurn already decided these, against the same turn number the
+    // inline check used: `isEnded ? currentTurn : nextTurnNumber - 1` was
+    // `sim.currentTurn` on both branches.
+    const newAchievements = outcome.newAchievements;
 
     if (newAchievements.length > 0) {
       await prisma.achievement.createMany({
