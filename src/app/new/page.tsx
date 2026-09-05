@@ -1,8 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+import { apiGet } from '@/lib/client/api';
+import type { ProfilePayload } from '@/lib/profile';
+import { isCompanySize, isDifficulty, isIndustry } from '@/types';
 
 const INDUSTRIES = [
   { id: 'Retail', icon: '🛍️', label: 'Retail', desc: 'Consumer goods, storefronts, e-commerce' },
@@ -54,13 +58,60 @@ const SIZES = [
   },
 ];
 
+/**
+ * `useSearchParams` needs a Suspense boundary to keep the route statically
+ * renderable; the inner component holds all of the form's state.
+ */
 export default function NewSimPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen" />}>
+      <NewSimForm />
+    </Suspense>
+  );
+}
+
+function NewSimForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [industry, setIndustry] = useState('');
   const [difficulty, setDifficulty] = useState('');
   const [companySize, setCompanySize] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // A template link carries its own triple, so a launch pre-selects the whole
+  // form; the key itself is passed on so the API can apply the modifiers.
+  const templateKey = searchParams.get('templateKey') ?? '';
+
+  useEffect(() => {
+    const fromLink = {
+      industry: searchParams.get('industry') ?? '',
+      difficulty: searchParams.get('difficulty') ?? '',
+      companySize: searchParams.get('companySize') ?? '',
+    };
+
+    if (isIndustry(fromLink.industry)) setIndustry(fromLink.industry);
+    if (isDifficulty(fromLink.difficulty)) setDifficulty(fromLink.difficulty);
+    if (isCompanySize(fromLink.companySize)) setCompanySize(fromLink.companySize);
+
+    // Anything the link did not decide falls back to the player's saved
+    // preferences. A failure here is not worth reporting: the form simply
+    // starts empty, which is what it did before preferences existed.
+    apiGet<ProfilePayload>('/api/profile')
+      .then((profile) => {
+        if (!isIndustry(fromLink.industry) && isIndustry(profile.preferredIndustry)) {
+          setIndustry(profile.preferredIndustry);
+        }
+        if (!isDifficulty(fromLink.difficulty) && isDifficulty(profile.preferredDifficulty)) {
+          setDifficulty(profile.preferredDifficulty);
+        }
+        if (!isCompanySize(fromLink.companySize) && isCompanySize(profile.preferredCompanySize)) {
+          setCompanySize(profile.preferredCompanySize);
+        }
+      })
+      .catch(() => {});
+  }, [searchParams]);
 
   const canSubmit = industry && difficulty && companySize && !loading;
 
@@ -73,7 +124,12 @@ export default function NewSimPage() {
       const res = await fetch('/api/simulations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ industry, difficulty, companySize }),
+        body: JSON.stringify({
+          industry,
+          difficulty,
+          companySize,
+          ...(templateKey === '' ? {} : { templateKey }),
+        }),
       });
 
       const data = await res.json();
