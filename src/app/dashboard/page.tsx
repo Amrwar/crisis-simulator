@@ -1,270 +1,284 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-interface SimSummary {
-  id: string;
-  industry: string;
-  difficulty: string;
-  companySize: string;
-  companyName: string;
-  status: string;
-  endingType: string;
-  currentTurn: number;
-  maxTurns: number;
-  cash: number;
-  reputation: number;
-  marketShare: number;
-  createdAt: string;
-  endedAt: string | null;
-}
+import { SimulationCard } from '@/components/dashboard/SimulationCard';
+import { AppHeader } from '@/components/layout/AppHeader';
+import { FilterBar, FilterSelect, SearchInput } from '@/components/ui/FilterBar';
+import { Pagination } from '@/components/ui/Pagination';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/States';
+import { ApiError, apiGet, buildQuery, messageFor } from '@/lib/client/api';
+import { fetchCurrentUser, type CurrentUser } from '@/lib/client/session';
+import { humanizeTag } from '@/lib/format';
+import type { SortDirection, SortField } from '@/lib/simulations/filters';
+import type { SimulationSearchPayload } from '@/lib/simulations/results';
+import { DIFFICULTIES, ENDING_TYPES, INDUSTRIES, SIMULATION_STATUSES } from '@/types';
 
-const STATUS_COLORS: Record<string, string> = {
-  active: 'text-accent-green bg-green-950/40 border-accent-green/40',
-  ended: 'text-text-secondary bg-bg-secondary border-bg-border',
-};
+const INDUSTRY_OPTIONS = INDUSTRIES.map((value) => ({ value, label: value }));
+const DIFFICULTY_OPTIONS = DIFFICULTIES.map((value) => ({ value, label: value }));
+const STATUS_OPTIONS = SIMULATION_STATUSES.map((value) => ({
+  value,
+  label: value === 'active' ? 'In progress' : 'Completed',
+}));
+const ENDING_OPTIONS = ENDING_TYPES.map((value) => ({ value, label: humanizeTag(value) }));
 
-const ENDING_COLORS: Record<string, string> = {
-  growth_win: 'text-accent-green',
-  survival: 'text-accent-blue',
-  takeover: 'text-accent-orange',
-  bankruptcy: 'text-accent-red',
-  scandal: 'text-accent-red',
-};
+const SORT_OPTIONS = [
+  { value: 'createdAt:desc', label: 'Newest first' },
+  { value: 'createdAt:asc', label: 'Oldest first' },
+  { value: 'performanceScore:desc', label: 'Best score' },
+  { value: 'performanceScore:asc', label: 'Worst score' },
+  { value: 'currentTurn:desc', label: 'Furthest played' },
+  { value: 'companyName:asc', label: 'Company name' },
+];
 
-const ENDING_LABELS: Record<string, string> = {
-  growth_win: '🏆 Growth Win',
-  survival: '🛡️ Survival',
-  takeover: '🔄 Takeover',
-  bankruptcy: '💸 Bankruptcy',
-  scandal: '⚠️ Scandal',
-};
-
-const INDUSTRY_ICONS: Record<string, string> = {
-  Retail: '🛍️',
-  Restaurant: '🍽️',
-  SaaS: '💻',
-  Construction: '🏗️',
-  Healthcare: '🏥',
-};
+/** How long to wait after the last keystroke before searching. */
+const SEARCH_DEBOUNCE_MS = 250;
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [sims, setSims] = useState<SimSummary[]>([]);
+
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [data, setData] = useState<SimulationSearchPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<{ email: string; name?: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [industry, setIndustry] = useState('');
+  const [difficulty, setDifficulty] = useState('');
+  const [status, setStatus] = useState('');
+  const [ending, setEnding] = useState('');
+  const [tag, setTag] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [sort, setSort] = useState('createdAt:desc');
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [meRes, simsRes] = await Promise.all([
-          fetch('/api/auth/me'),
-          fetch('/api/simulations'),
-        ]);
+    fetchCurrentUser().then(setUser);
+  }, []);
 
-        if (meRes.status === 401) {
-          router.push('/auth/login');
-          return;
-        }
+  // Typing should not fire one request per character.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
 
-        const meData = await meRes.json();
-        setUser(meData);
+    return () => clearTimeout(timer);
+  }, [search]);
 
-        if (simsRes.ok) {
-          const simsData = await simsRes.json();
-          setSims(simsData);
-        }
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    const [field, direction] = sort.split(':') as [SortField, SortDirection];
+
+    try {
+      const query = buildQuery({
+        q: debouncedSearch,
+        industry,
+        difficulty,
+        status,
+        ending,
+        tag,
+        from,
+        to,
+        sort: field,
+        direction,
+        page,
+        pageSize: 12,
+      });
+      setData(await apiGet<SimulationSearchPayload>(`/api/simulations/search${query}`));
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.isUnauthorized) {
+        router.push('/auth/login');
+        return;
       }
+      setError(messageFor(cause));
+    } finally {
+      setLoading(false);
     }
-    load();
-  }, [router]);
+  }, [debouncedSearch, industry, difficulty, status, ending, tag, from, to, sort, page, router]);
 
-  async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/auth/login');
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const activeFilters = [
+    debouncedSearch,
+    industry,
+    difficulty,
+    status,
+    ending,
+    tag,
+    from,
+    to,
+  ].filter((value) => value !== '').length;
+
+  function clearFilters() {
+    setSearch('');
+    setDebouncedSearch('');
+    setIndustry('');
+    setDifficulty('');
+    setStatus('');
+    setEnding('');
+    setTag('');
+    setFrom('');
+    setTo('');
+    setPage(1);
   }
 
-  const activeSims = sims.filter((s) => s.status === 'active');
-  const endedSims = sims.filter((s) => s.status === 'ended');
+  /** A changed filter resets to page one: page 4 of the old result is meaningless. */
+  function change(setter: (value: string) => void) {
+    return (value: string) => {
+      setter(value);
+      setPage(1);
+    };
+  }
+
+  const total = data?.page.total ?? 0;
+  const neverPlayed = activeFilters === 0 && total === 0 && !loading;
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="border-b border-bg-border bg-bg-secondary/50 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="text-2xl font-bold">
-            <span className="text-text-primary">Crisis</span>
-            <span className="text-accent-red">Sim</span>
-          </Link>
-          <div className="flex items-center gap-4">
-            <span className="text-text-secondary text-sm">
-              {user?.name || user?.email}
-            </span>
-            <button onClick={handleLogout} className="btn-ghost text-sm py-1.5 px-3">
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+      <AppHeader user={user} />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Hero row */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-text-primary">Dashboard</h1>
             <p className="text-text-secondary mt-1">
-              {activeSims.length > 0
-                ? `${activeSims.length} active simulation${activeSims.length > 1 ? 's' : ''}`
-                : 'Start your first simulation to begin'}
+              {total === 0
+                ? 'Start your first simulation to begin'
+                : `${total} simulation${total === 1 ? '' : 's'}${
+                    activeFilters > 0 ? ' matching your filters' : ''
+                  }`}
             </p>
           </div>
-          <Link
-            href="/new"
-            className="btn-primary px-6 py-3 text-sm rounded-xl inline-flex items-center gap-2"
-          >
-            <span>+</span> New Simulation
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/templates" className="btn-ghost text-sm py-3 px-4 rounded-xl">
+              Templates
+            </Link>
+            <Link
+              href="/new"
+              className="btn-primary px-6 py-3 text-sm rounded-xl inline-flex items-center gap-2"
+            >
+              <span aria-hidden="true">+</span> New Simulation
+            </Link>
+          </div>
         </div>
 
-        {loading ? (
-          <div className="text-center py-20 text-text-muted">Loading…</div>
-        ) : sims.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <div className="space-y-8">
-            {/* Active simulations */}
-            {activeSims.length > 0 && (
-              <section>
-                <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-                  Active Simulations
-                </h2>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {activeSims.map((sim) => (
-                    <SimCard key={sim.id} sim={sim} active />
-                  ))}
-                </div>
-              </section>
+        {!neverPlayed && (
+          <FilterBar onClear={clearFilters} activeCount={activeFilters}>
+            <SearchInput
+              label="Search"
+              value={search}
+              onChange={setSearch}
+              placeholder="Company, competitor or situation"
+            />
+            <FilterSelect
+              label="Status"
+              value={status}
+              options={STATUS_OPTIONS}
+              onChange={change(setStatus)}
+              anyLabel="Any status"
+            />
+            <FilterSelect
+              label="Industry"
+              value={industry}
+              options={INDUSTRY_OPTIONS}
+              onChange={change(setIndustry)}
+              anyLabel="Any industry"
+            />
+            <FilterSelect
+              label="Difficulty"
+              value={difficulty}
+              options={DIFFICULTY_OPTIONS}
+              onChange={change(setDifficulty)}
+              anyLabel="Any difficulty"
+            />
+            <FilterSelect
+              label="Ending"
+              value={ending}
+              options={ENDING_OPTIONS}
+              onChange={change(setEnding)}
+              anyLabel="Any ending"
+            />
+            {(data?.availableTags.length ?? 0) > 0 && (
+              <FilterSelect
+                label="Label"
+                value={tag}
+                options={(data?.availableTags ?? []).map((value) => ({ value, label: value }))}
+                onChange={change(setTag)}
+                anyLabel="Any label"
+              />
             )}
+            <DateField label="From" value={from} onChange={change(setFrom)} />
+            <DateField label="To" value={to} onChange={change(setTo)} />
+            <FilterSelect
+              label="Sort by"
+              value={sort}
+              options={SORT_OPTIONS}
+              onChange={change(setSort)}
+              anyLabel="Newest first"
+            />
+          </FilterBar>
+        )}
 
-            {/* Ended simulations */}
-            {endedSims.length > 0 && (
-              <section>
-                <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-                  Completed Simulations
-                </h2>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {endedSims.map((sim) => (
-                    <SimCard key={sim.id} sim={sim} active={false} />
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
+        {loading && data === null ? (
+          <LoadingState />
+        ) : error !== null ? (
+          <ErrorState message={error} onRetry={load} />
+        ) : neverPlayed ? (
+          <EmptyState
+            icon="🏢"
+            title="No simulations yet"
+            description="Start your first simulation to experience the CEO seat, or launch one from a template."
+            action={{ href: '/new', label: 'Create First Simulation' }}
+          />
+        ) : data === null || data.page.items.length === 0 ? (
+          <EmptyState
+            icon="🔍"
+            title="Nothing matches those filters"
+            description="Try widening the search, or clear the filters to see every run."
+          />
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {data.page.items.map((sim) => (
+                <SimulationCard key={sim.id} sim={sim} />
+              ))}
+            </div>
+            <Pagination page={data.page} onPageChange={setPage} itemLabel="simulations" />
+          </>
         )}
       </main>
     </div>
   );
 }
 
-function SimCard({ sim, active }: { sim: SimSummary; active: boolean }) {
-  const progress = (sim.currentTurn / sim.maxTurns) * 100;
-  const netFlow = sim.cash;
-
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
   return (
-    <Link
-      href={sim.status === 'ended' ? `/sim/${sim.id}/report` : `/sim/${sim.id}`}
-      className="glass-panel p-5 hover:border-accent-blue/40 transition-all duration-150 block group"
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">{INDUSTRY_ICONS[sim.industry] || '🏢'}</span>
-          <div>
-            <h3 className="font-semibold text-text-primary text-sm leading-tight group-hover:text-accent-blue transition-colors">
-              {sim.companyName || sim.industry}
-            </h3>
-            <p className="text-xs text-text-muted">{sim.industry} · {sim.companySize}</p>
-          </div>
-        </div>
-        <span
-          className={`text-xs px-2 py-0.5 rounded border font-medium ${STATUS_COLORS[sim.status]}`}
-        >
-          {sim.status === 'active' ? 'Active' : 'Done'}
-        </span>
-      </div>
-
-      {/* Ending badge */}
-      {sim.status === 'ended' && sim.endingType && (
-        <div className={`text-sm font-semibold mb-3 ${ENDING_COLORS[sim.endingType]}`}>
-          {ENDING_LABELS[sim.endingType] || sim.endingType}
-        </div>
-      )}
-
-      {/* Turn progress */}
-      <div className="mb-4">
-        <div className="flex justify-between text-xs text-text-muted mb-1.5">
-          <span>Turn {sim.currentTurn}/{sim.maxTurns}</span>
-          <span>{sim.difficulty}</span>
-        </div>
-        <div className="w-full bg-bg-secondary rounded-full h-1.5">
-          <div
-            className={`h-1.5 rounded-full transition-all ${active ? 'bg-accent-blue' : 'bg-bg-border'}`}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Key metrics */}
-      <div className="grid grid-cols-3 gap-2">
-        <MetricMini label="Cash" value={formatCash(sim.cash)} color="text-accent-green" />
-        <MetricMini label="Repute" value={`${Math.round(sim.reputation)}`} color="text-accent-purple" />
-        <MetricMini label="Mkt%" value={`${Math.round(sim.marketShare)}%`} color="text-accent-blue" />
-      </div>
-
-      {/* Date */}
-      <p className="text-xs text-text-muted mt-3">
-        {new Date(sim.createdAt).toLocaleDateString('en-EG', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-        })}
-      </p>
-    </Link>
+    <label className="flex flex-col gap-1 text-xs text-text-muted">
+      {label}
+      <input
+        type="date"
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="input-field py-1.5 text-sm"
+      />
+    </label>
   );
-}
-
-function MetricMini({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="bg-bg-secondary rounded-md p-2 text-center">
-      <div className={`text-sm font-bold font-mono ${color}`}>{value}</div>
-      <div className="text-xs text-text-muted">{label}</div>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="text-center py-20">
-      <div className="text-6xl mb-4">🏢</div>
-      <h3 className="text-xl font-semibold text-text-primary mb-2">No simulations yet</h3>
-      <p className="text-text-secondary mb-6">
-        Start your first simulation to experience the CEO seat.
-      </p>
-      <Link href="/new" className="btn-primary px-6 py-3 rounded-xl">
-        Create First Simulation
-      </Link>
-    </div>
-  );
-}
-
-function formatCash(amount: number): string {
-  if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}M`;
-  if (amount >= 1_000) return `${Math.round(amount / 1_000)}K`;
-  return String(Math.round(amount));
 }
