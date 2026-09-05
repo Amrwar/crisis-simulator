@@ -3,13 +3,61 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { getStartingMetrics } from '@/lib/game/starting-metrics';
+import {
+  applyTemplate,
+  builtInTemplate,
+  isBuiltInKey,
+  type MetricModifiers,
+} from '@/lib/game/scenario-templates';
+import { parseJsonObject } from '@/lib/json';
 import { generateInitialTurn } from '@/lib/llm';
 
 const CreateSimSchema = z.object({
   industry: z.enum(['Retail', 'Restaurant', 'SaaS', 'Construction', 'Healthcare']),
   difficulty: z.enum(['Easy', 'Medium', 'Hard']),
   companySize: z.enum(['Small', 'Medium']),
+  /**
+   * Optional preset to launch from: a built-in key, or a saved template's id.
+   * The industry, difficulty and size above still decide the base position —
+   * the form sends the template's own triple in them — so a template only ever
+   * layers starting-metric modifiers on top.
+   */
+  templateKey: z.string().max(64).optional(),
 });
+
+/**
+ * Resolves a preset into its metric modifiers.
+ *
+ * An unknown key, or one belonging to somebody else, yields no modifiers
+ * rather than an error: the run is still a perfectly good run at that
+ * industry, difficulty and size, and failing the creation would lose the
+ * player's turn-one generation over a stale bookmark.
+ */
+async function modifiersFor(
+  templateKey: string | undefined,
+  userId: string
+): Promise<MetricModifiers> {
+  if (!templateKey) return {};
+
+  if (isBuiltInKey(templateKey)) {
+    return builtInTemplate(templateKey)?.metricModifiers ?? {};
+  }
+
+  const template = await prisma.scenarioTemplate.findFirst({
+    where: { id: templateKey, userId },
+    select: { id: true, metricModifiers: true },
+  });
+
+  if (!template) return {};
+
+  // Usage is what orders the template list, so it is counted on launch.
+  await prisma.scenarioTemplate.update({
+    where: { id: template.id },
+    data: { usageCount: { increment: 1 } },
+  });
+
+  return parseJsonObject<MetricModifiers>(template.metricModifiers, {});
+}
 
 // GET /api/simulations — list user's simulations
 export async function GET() {
@@ -56,10 +104,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { industry, difficulty, companySize } = parsed.data;
+    const { industry, difficulty, companySize, templateKey } = parsed.data;
 
-    // Generate deterministic starting metrics
-    const startingMetrics = getStartingMetrics(industry, difficulty, companySize);
+    // Generate deterministic starting metrics. A preset layers modifiers on
+    // top of the same base position; without one this is getStartingMetrics
+    // exactly as before.
+    const modifiers = await modifiersFor(templateKey, session.userId!);
+    const startingMetrics =
+      Object.keys(modifiers).length === 0
+        ? getStartingMetrics(industry, difficulty, companySize)
+        : applyTemplate(industry, difficulty, companySize, modifiers);
 
     // Generate a random seed for this simulation
     const seed = Math.floor(Math.random() * 2147483647);
@@ -100,6 +154,9 @@ export async function POST(req: NextRequest) {
         demandVolatility: startingMetrics.demandVolatility,
         competitorAggression: startingMetrics.competitorAggression,
         seed,
+        // Recorded even if the template is later renamed or deleted: the run
+        // really was launched from it.
+        templateKey: templateKey ?? '',
         currentTurn: 1,
       },
     });
