@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 
-import { guardFailed, requireUserId } from '@/lib/api/guards';
+import { guardFailed, requireUserId, type Guarded } from '@/lib/api/guards';
 import {
   badRequest,
   conflict,
@@ -23,7 +23,8 @@ import { parseJsonObject } from '@/lib/json';
  * row, and they are not the caller's to change.
  */
 
-function project(template: {
+/** The stored columns, before the JSON modifier column is parsed. */
+interface StoredTemplateRow {
   id: string;
   name: string;
   description: string;
@@ -33,7 +34,9 @@ function project(template: {
   metricModifiers: string;
   usageCount: number;
   createdAt: Date;
-}): StoredTemplate {
+}
+
+function project(template: StoredTemplateRow): StoredTemplate {
   return {
     id: template.id,
     name: template.name,
@@ -52,11 +55,14 @@ function project(template: {
  * routes do: 404 for a row that is not there, 403 for one that is somebody
  * else's.
  */
-async function requireOwnTemplate(id: string, userId: string) {
+async function requireOwnTemplate(
+  id: string,
+  userId: string
+): Promise<Guarded<StoredTemplateRow>> {
   const template = await prisma.scenarioTemplate.findUnique({ where: { id } });
-  if (!template) return { response: notFound('Template not found') } as const;
-  if (template.userId !== userId) return { response: forbidden() } as const;
-  return { template } as const;
+  if (!template) return { response: notFound('Template not found') };
+  if (template.userId !== userId) return { response: forbidden() };
+  return { value: template };
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -64,9 +70,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   if (guardFailed(auth)) return auth.response;
 
   const found = await requireOwnTemplate(params.id, auth.value);
-  if ('response' in found) return found.response;
+  if (guardFailed(found)) return found.response;
 
-  return ok(project(found.template));
+  return ok(project(found.value));
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -74,7 +80,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (guardFailed(auth)) return auth.response;
 
   const found = await requireOwnTemplate(params.id, auth.value);
-  if ('response' in found) return found.response;
+  if (guardFailed(found)) return found.response;
 
   const body = await readJsonBody(req);
   if (body === undefined) return badRequest('Expected a JSON body');
@@ -110,7 +116,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (guardFailed(auth)) return auth.response;
 
   const found = await requireOwnTemplate(params.id, auth.value);
-  if ('response' in found) return found.response;
+  if (guardFailed(found)) return found.response;
 
   await prisma.scenarioTemplate.delete({ where: { id: params.id } });
 
