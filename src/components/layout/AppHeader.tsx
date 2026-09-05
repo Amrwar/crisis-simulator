@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
+import { signOutRequest } from '@/lib/client/session';
+
 /**
  * The header every signed-in page shares.
  *
@@ -30,7 +32,7 @@ export function AppHeader({ user }: { user: HeaderUser | null }) {
   const pathname = usePathname();
 
   async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await signOutRequest();
     router.push('/auth/login');
   }
 
