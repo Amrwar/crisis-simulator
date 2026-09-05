@@ -141,4 +141,107 @@ export async function seedSimulation(userId: string, overrides: SimulationSeed =
   return simulation;
 }
 
+export interface CompletedSeed extends SimulationSeed {
+  industry?: string;
+  companySize?: string;
+  companyName?: string;
+  endingType?: string;
+  performanceScore?: number;
+  /** Turns played out before the run ended. Defaults to a full ten. */
+  turnsCompleted?: number;
+  endedAt?: Date;
+  notes?: string;
+  /** Metric trajectory: one snapshot per completed turn. */
+  trajectory?: Array<Partial<Record<'cash' | 'revenue' | 'reputation' | 'morale' | 'marketShare', number>>>;
+  /** Decision tags per turn, so decision-shaped features have something to read. */
+  decisionTags?: string[][];
+}
+
+/**
+ * Seeds a run that has already finished: every turn decided, an ending, a
+ * score and an `endedAt`. This is the shape the leaderboard, the analytics,
+ * the comparison, the replay and the exporters all read.
+ */
+export async function seedCompletedSimulation(userId: string, overrides: CompletedSeed = {}) {
+  const turnsCompleted = overrides.turnsCompleted ?? 10;
+  const cash = overrides.cash ?? 1_000_000;
+  const revenue = overrides.monthlyRevenue ?? 300_000;
+
+  const simulation = await prisma.simulation.create({
+    data: {
+      userId,
+      industry: overrides.industry ?? 'Retail',
+      difficulty: overrides.difficulty ?? 'Medium',
+      companySize: overrides.companySize ?? 'Small',
+      companyName: overrides.companyName ?? 'Nile Home Goods',
+      competitorName: 'Delta Living',
+      competitorStrategy: overrides.competitorStrategy ?? 'price_war',
+      competitorStrength: 50,
+      cash,
+      monthlyRevenue: revenue,
+      burnRate: overrides.burnRate ?? 200_000,
+      reputation: overrides.reputation ?? 60,
+      morale: overrides.morale ?? 60,
+      churn: overrides.churn ?? 20,
+      legalRisk: overrides.legalRisk ?? 10,
+      marketShare: overrides.marketShare ?? 20,
+      supplierReliability: overrides.supplierReliability ?? 70,
+      employeeLoyalty: overrides.employeeLoyalty ?? 70,
+      demandVolatility: overrides.demandVolatility ?? 30,
+      competitorAggression: overrides.competitorAggression ?? 40,
+      flags: JSON.stringify(overrides.flags ?? {}),
+      currentTurn: turnsCompleted,
+      maxTurns: overrides.maxTurns ?? 10,
+      status: 'ended',
+      endingType: overrides.endingType ?? 'survival',
+      performanceScore: overrides.performanceScore ?? 60,
+      notes: overrides.notes ?? '',
+      seed: overrides.seed ?? 987_654,
+      endedAt: overrides.endedAt ?? new Date('2025-03-12T10:00:00.000Z'),
+      finalReport: JSON.stringify({
+        overallScore: overrides.performanceScore ?? 60,
+        skillScores: { finance: 60, leadership: 62, risk: 55, communication: 64, ethics: 78 },
+        endingType: overrides.endingType ?? 'survival',
+        strengths: ['Kept the supply chain intact'],
+        improvements: ['Act on the cost base earlier'],
+        learningPath: ['Working capital management'],
+        summary: 'The company came through ten difficult turns intact.',
+      }),
+    },
+  });
+
+  for (let turnNumber = 1; turnNumber <= turnsCompleted; turnNumber++) {
+    const point = overrides.trajectory?.[turnNumber - 1] ?? {};
+    const tags = overrides.decisionTags?.[turnNumber - 1] ?? ['negotiate_supplier'];
+
+    await prisma.turn.create({
+      data: {
+        simulationId: simulation.id,
+        turnNumber,
+        title: `Turn ${turnNumber}`,
+        narrative: 'A crisis unfolds at the Cairo warehouse.',
+        characterMessages: JSON.stringify([{ from: 'CFO', message: 'Cash is tight this month.' }]),
+        newsOrSocial: JSON.stringify({ type: 'news', text: 'Import costs climb again.' }),
+        options: JSON.stringify(DEFAULT_OPTIONS),
+        optionId: 'A',
+        tags: JSON.stringify(tags),
+        metricDeltas: JSON.stringify({ cash: -1000 }),
+        cashAfter: point.cash ?? cash,
+        revenueAfter: point.revenue ?? revenue,
+        burnRateAfter: overrides.burnRate ?? 200_000,
+        reputationAfter: point.reputation ?? overrides.reputation ?? 60,
+        moraleAfter: point.morale ?? overrides.morale ?? 60,
+        churnAfter: overrides.churn ?? 20,
+        legalRiskAfter: overrides.legalRisk ?? 10,
+        marketShareAfter: point.marketShare ?? overrides.marketShare ?? 20,
+        coachFeedback: `Coach note for turn ${turnNumber}.`,
+        coachWhyMatters: 'Continuity buys time; it does not fix the burn rate.',
+        decidedAt: new Date(`2025-03-12T0${Math.min(9, turnNumber)}:00:00.000Z`),
+      },
+    });
+  }
+
+  return simulation;
+}
+
 export { DEFAULT_OPTIONS };
