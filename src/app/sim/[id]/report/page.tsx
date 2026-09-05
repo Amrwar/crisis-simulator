@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 
+import { RunAnnotations } from '@/components/sim/RunAnnotations';
+
 interface FinalReport {
   overallScore: number;
   skillScores: {
@@ -44,6 +46,8 @@ interface SimData {
   legalRisk: number;
   marketShare: number;
   achievements: Achievement[];
+  notes: string;
+  tags: Array<{ label: string }>;
   finalReport: FinalReport | null;
   turns: Array<{
     turnNumber: number;
@@ -426,6 +430,43 @@ export default function ReportPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Owner annotations */}
+        <RunAnnotations
+          simulationId={sim.id}
+          initialNotes={sim.notes ?? ''}
+          initialTags={(sim.tags ?? []).map((tag) => tag.label)}
+        />
+
+        {/* What else can be done with a finished run */}
+        <div className="glass-panel p-5">
+          <h2 className="text-base font-semibold text-text-primary mb-1">This run</h2>
+          <p className="text-sm text-text-secondary mb-4">
+            Verify it, take it away, or line it up against another.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/sim/${sim.id}/replay`} className="btn-ghost text-sm">
+              Verify replay
+            </Link>
+            <Link href={`/compare?a=${sim.id}`} className="btn-ghost text-sm">
+              Compare with another run
+            </Link>
+            <a
+              href={`/api/simulations/${sim.id}/export?format=json`}
+              className="btn-ghost text-sm"
+              download
+            >
+              Export JSON
+            </a>
+            <a
+              href={`/api/simulations/${sim.id}/export?format=csv`}
+              className="btn-ghost text-sm"
+              download
+            >
+              Export CSV
+            </a>
           </div>
         </div>
 

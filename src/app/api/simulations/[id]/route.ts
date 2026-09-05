@@ -14,6 +14,9 @@ export async function GET(
     include: {
       turns: { orderBy: { turnNumber: 'asc' } },
       achievements: true,
+      // The report renders the owner's labels beside their note, which is
+      // already on the row; loading them here saves the page a second request.
+      tags: { orderBy: { label: 'asc' } },
     },
   });
 
