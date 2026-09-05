@@ -142,6 +142,32 @@ export default function DashboardPage() {
   const total = data?.page.total ?? 0;
   const neverPlayed = activeFilters === 0 && total === 0 && !loading;
 
+  /**
+   * The download link for the runs currently listed.
+   *
+   * Built from the same state the search request uses, minus the paging, so
+   * the file holds the whole filtered cohort rather than just the page on
+   * screen. It stays a plain link rather than a fetch, so the browser handles
+   * the download and honours the filename the endpoint sets.
+   */
+  function exportHref(format: 'csv' | 'json') {
+    const [field, direction] = sort.split(':') as [SortField, SortDirection];
+
+    return `/api/simulations/search/export${buildQuery({
+      q: debouncedSearch,
+      industry,
+      difficulty,
+      status,
+      ending,
+      tag,
+      from,
+      to,
+      sort: field,
+      direction,
+      format,
+    })}`;
+  }
+
   return (
     <div className="min-h-screen">
       <AppHeader user={user} />
@@ -159,6 +185,34 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex gap-2">
+            {total > 0 && (
+              <>
+                <a
+                  href={exportHref('csv')}
+                  className="btn-ghost text-sm py-3 px-4 rounded-xl"
+                  data-testid="export-csv"
+                  title={
+                    activeFilters > 0
+                      ? 'Download the runs matching these filters as CSV'
+                      : 'Download every run as CSV'
+                  }
+                >
+                  Export CSV
+                </a>
+                <a
+                  href={exportHref('json')}
+                  className="btn-ghost text-sm py-3 px-4 rounded-xl"
+                  data-testid="export-json"
+                  title={
+                    activeFilters > 0
+                      ? 'Download the runs matching these filters as JSON'
+                      : 'Download every run as JSON'
+                  }
+                >
+                  Export JSON
+                </a>
+              </>
+            )}
             <Link href="/templates" className="btn-ghost text-sm py-3 px-4 rounded-xl">
               Templates
             </Link>
