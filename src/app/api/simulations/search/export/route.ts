@@ -6,7 +6,11 @@ import { validationFailed } from '@/lib/api/respond';
 import { normalizeLabel } from '@/lib/annotations';
 import { prisma } from '@/lib/db';
 import { contentDisposition, safeFilename } from '@/lib/export/csv';
-import { buildListCsvExport, buildListJsonExport } from '@/lib/export/list-export';
+import {
+  MAX_LIST_EXPORT_ROWS,
+  buildListCsvExport,
+  buildListJsonExport,
+} from '@/lib/export/list-export';
 import {
   SearchQuerySchema,
   appliedFilters,
@@ -26,16 +30,6 @@ import type { SimulationSearchResult } from '@/lib/simulations/results';
  * Like the single-run export the body is the file rather than the envelope;
  * refusals still use the envelope, since a page reads those.
  */
-
-/**
- * The most rows one download will carry.
- *
- * Paging is what keeps the search endpoint's response bounded, and this
- * endpoint deliberately ignores it. Something else therefore has to, or a
- * player with thousands of runs would ask for all of them in one query and
- * hold the whole list in memory to serialise it.
- */
-export const MAX_EXPORT_ROWS = 1000;
 
 const ExportQuerySchema = SearchQuerySchema.extend({
   format: z.enum(['json', 'csv']).default('json'),
@@ -61,7 +55,7 @@ export async function GET(req: NextRequest) {
       where,
       orderBy: buildOrderBy(query),
       // One past the cap, so a full page can be told from an exact fit.
-      take: MAX_EXPORT_ROWS + 1,
+      take: MAX_LIST_EXPORT_ROWS + 1,
       select: {
         id: true,
         industry: true,
@@ -84,8 +78,8 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  const truncated = rows.length > MAX_EXPORT_ROWS;
-  const results: SimulationSearchResult[] = rows.slice(0, MAX_EXPORT_ROWS).map((row) => ({
+  const truncated = rows.length > MAX_LIST_EXPORT_ROWS;
+  const results: SimulationSearchResult[] = rows.slice(0, MAX_LIST_EXPORT_ROWS).map((row) => ({
     id: row.id,
     industry: row.industry,
     difficulty: row.difficulty,

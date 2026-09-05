@@ -4,6 +4,7 @@ import {
   LIST_CSV_COLUMNS,
   LIST_CSV_HEADERS,
   LIST_EXPORT_FORMAT_VERSION,
+  MAX_LIST_EXPORT_ROWS,
   buildListCsvExport,
   buildListJsonExport,
   toListExportRow,
@@ -141,6 +142,13 @@ describe('buildListCsvExport', () => {
     for (const column of LIST_CSV_COLUMNS) {
       expect(Object.keys(row)).toContain(column.key);
     }
+  });
+});
+
+describe('MAX_LIST_EXPORT_ROWS', () => {
+  it('bounds a download to a whole positive number of rows', () => {
+    expect(Number.isInteger(MAX_LIST_EXPORT_ROWS)).toBe(true);
+    expect(MAX_LIST_EXPORT_ROWS).toBeGreaterThan(0);
   });
 });
 

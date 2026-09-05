@@ -23,6 +23,19 @@ import { objectsToCsv } from './csv';
 export const LIST_EXPORT_FORMAT_VERSION = 1;
 
 /**
+ * The most rows one download will carry.
+ *
+ * Paging is what keeps the search endpoint bounded, and the export endpoint
+ * deliberately ignores it, so something else has to: without a cap a player
+ * with thousands of runs would ask for all of them at once and the whole list
+ * would be held in memory to serialise it.
+ *
+ * It lives here rather than in the route because a Next.js route file may only
+ * export its HTTP handlers — an extra export there fails the production build.
+ */
+export const MAX_LIST_EXPORT_ROWS = 1000;
+
+/**
  * One run, flattened for a spreadsheet.
  *
  * `tags` collapses to a space-joined string and `hasNotes` to a boolean: a
