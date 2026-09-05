@@ -111,7 +111,13 @@ export function pageWindow(current: number, pageCount: number, radius = 1): Arra
   let previous = 0;
 
   for (const p of sorted) {
-    if (previous !== 0 && p - previous > 1) out.push(null);
+    const gap = p - previous;
+    if (previous !== 0 && gap > 1) {
+      // An ellipsis standing in for a single page is wider than the page
+      // number it hides, so show the number instead.
+      if (gap === 2) out.push(previous + 1);
+      else out.push(null);
+    }
     out.push(p);
     previous = p;
   }
