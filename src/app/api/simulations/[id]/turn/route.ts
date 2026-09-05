@@ -164,6 +164,10 @@ export async function POST(
     let nextTurnData = null;
     let finalReportData = null;
 
+    // Only meaningful once the run has ended; kept out here so step 7 can
+    // write it in the same update as the rest of the closing state.
+    let finalPerformanceScore = 0;
+
     if (!isEnded) {
       // Build history for AI context
       const history = sim.turns
@@ -233,6 +237,7 @@ export async function POST(
     } else {
       // Generate final report
       const performanceScore = computePerformanceScore(newMetrics, firstTurnCash);
+      finalPerformanceScore = performanceScore;
       const allDecisions = [
         ...sim.turns
           .filter((t) => t.decidedAt)
@@ -314,6 +319,10 @@ export async function POST(
         endingType: isEnded ? ending.endingType! : '',
         endedAt: isEnded ? new Date() : null,
         finalReport: isEnded && finalReportData ? JSON.stringify(finalReportData) : '',
+        // The leaderboard orders on this column, so it is written from the
+        // rules engine rather than from the generated report: the report is
+        // advisory prose and may fall back to a canned version.
+        performanceScore: isEnded ? finalPerformanceScore : 0,
       },
     });
 
