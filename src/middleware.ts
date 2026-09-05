@@ -42,5 +42,15 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard', '/new', '/sim/:path*'],
+  matcher: [
+    '/dashboard',
+    '/new',
+    '/sim/:path*',
+    '/leaderboard',
+    '/analytics',
+    '/achievements',
+    '/templates',
+    '/compare',
+    '/settings',
+  ],
 };
