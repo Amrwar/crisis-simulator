@@ -6,23 +6,31 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")   // pooled connection (Neon pooler endpoint)
-  directUrl = env("DIRECT_URL")     // direct connection used only for migrations
+  url       = env("DATABASE_URL") // pooled connection (Neon pooler endpoint)
+  directUrl = env("DIRECT_URL") // direct connection used only for migrations
 }
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
+  id           String   @id @default(cuid())
+  email        String   @unique
   passwordHash String
   name         String?
-  createdAt    DateTime     @default(now())
-  simulations  Simulation[]
+  createdAt    DateTime @default(now())
+
+  // ─── Defaults pre-selected on the "new simulation" form ───────────────────
+  // Empty string means "no preference"; the form falls back to its own default.
+  preferredIndustry    String @default("")
+  preferredDifficulty  String @default("")
+  preferredCompanySize String @default("")
+
+  simulations Simulation[]
+  templates   ScenarioTemplate[]
 }
 
 model Simulation {
   id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String
-  user   User   @relation(fields: [userId], references: [id])
 
   // Setup
   industry    String // Retail | Restaurant | SaaS | Construction | Healthcare
@@ -59,24 +67,73 @@ model Simulation {
   flags       String @default("{}") @db.Text // JSON: {"took_loan":true, ...}
   currentTurn Int    @default(0)
   maxTurns    Int    @default(10)
-  status      String @default("active")      // active | ended
-  endingType  String @default("")            // growth_win|survival|takeover|bankruptcy|scandal
+  status      String @default("active") // active | ended
+  endingType  String @default("") // growth_win|survival|takeover|bankruptcy|scandal
 
   seed Int // seeded RNG (Mulberry32)
 
   finalReport String @default("") @db.Text // JSON final report, set on game end
+
+  // Rules-engine performance score, written once when the run ends. Kept as a
+  // column rather than re-derived on read so the leaderboard can sort in SQL.
+  performanceScore Float @default(0)
+
+  // Free-form annotation the owner writes on the run itself.
+  notes String @default("") @db.Text
+
+  // Which preset the run was launched from, if any. Not a foreign key: a
+  // template may be renamed or deleted without rewriting finished runs.
+  templateKey String @default("")
 
   createdAt DateTime  @default(now())
   endedAt   DateTime?
 
   turns        Turn[]
   achievements Achievement[]
+  tags         RunTag[]
+}
+
+/// A short label the owner attaches to a run, for grouping and filtering.
+model RunTag {
+  id           String     @id @default(cuid())
+  simulation   Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  simulationId String
+
+  label     String
+  createdAt DateTime @default(now())
+
+  @@unique([simulationId, label])
+  @@index([simulationId])
+}
+
+/// A named starting configuration a user can launch a run from.
+model ScenarioTemplate {
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  name        String
+  description String @default("") @db.Text
+
+  industry    String
+  difficulty  String
+  companySize String
+
+  // JSON: partial StartingMetrics deltas, e.g. {"cash":-200000,"morale":10}
+  metricModifiers String @default("{}") @db.Text
+
+  usageCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
 }
 
 model Turn {
   id           String     @id @default(cuid())
+  simulation   Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
   simulationId String
-  simulation   Simulation @relation(fields: [simulationId], references: [id])
 
   turnNumber Int
 
@@ -85,7 +142,7 @@ model Turn {
   narrative         String @db.Text
   characterMessages String @db.Text // JSON: [{from, message}]
   newsOrSocial      String @default("") @db.Text // JSON: {type, text} or ""
-  options           String @db.Text              // JSON: [{id,text,risk,tags}]
+  options           String @db.Text // JSON: [{id,text,risk,tags}]
 
   // Decision submitted by student
   optionId String @default("") // "A"|"B"|"C"|"D"
@@ -109,15 +166,22 @@ model Turn {
   coachFeedback   String @default("") @db.Text
   coachWhyMatters String @default("") @db.Text
 
+  // The player's own note on this turn, written after the fact while reviewing.
+  note String @default("") @db.Text
+
   createdAt DateTime  @default(now())
   decidedAt DateTime?
+
+  @@index([simulationId])
 }
 
 model Achievement {
   id           String     @id @default(cuid())
+  simulation   Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
   simulationId String
-  simulation   Simulation @relation(fields: [simulationId], references: [id])
 
-  type       String   // crisis_manager|negotiator|turnaround|brand_guardian
+  type       String // crisis_manager|negotiator|turnaround|brand_guardian
   unlockedAt DateTime @default(now())
+
+  @@index([simulationId])
 }

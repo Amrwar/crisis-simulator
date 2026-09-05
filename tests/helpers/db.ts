@@ -10,7 +10,9 @@ import { createCookieJar, useCookieJar, type CookieJar } from './cookie-jar';
  */
 export async function resetDatabase(): Promise<void> {
   await prisma.achievement.deleteMany();
+  await prisma.runTag.deleteMany();
   await prisma.turn.deleteMany();
+  await prisma.scenarioTemplate.deleteMany();
   await prisma.simulation.deleteMany();
   await prisma.user.deleteMany();
 }

@@ -45,13 +45,31 @@ describe('test schema derivation', () => {
   });
 
   it('keeps every model, with the same fields', () => {
-    const models = (schema: string) => (schema.match(/^model\s+(\w+)/gm) ?? []).sort();
+    const models = (schema: string) =>
+      (schema.match(/^model\s+(\w+)/gm) ?? []).map((line) => line.split(/\s+/)[1]).sort();
+
     expect(models(derived)).toEqual(models(productionSchema));
-    expect(models(derived)).toHaveLength(4);
+    expect(models(derived)).toEqual([
+      'Achievement',
+      'RunTag',
+      'ScenarioTemplate',
+      'Simulation',
+      'Turn',
+      'User',
+    ]);
 
     const fields = (schema: string) =>
       (schema.match(/^\s{2}\w+\s+\w+/gm) ?? []).map((line) => line.trim().split(/\s+/)[0]);
     expect(fields(derived).length).toBe(fields(productionSchema).length);
+  });
+
+  it('keeps the cascade rules, so deleting an account takes its rows with it', () => {
+    // Account deletion relies on the database, not on application-level
+    // bookkeeping: every row that hangs off a user must name the cascade.
+    expect(derived.match(/onDelete: Cascade/g) ?? []).toHaveLength(5);
+    expect(productionSchema).toContain(
+      'user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)'
+    );
   });
 
   it('refuses to produce a schema it could not fully convert', () => {
