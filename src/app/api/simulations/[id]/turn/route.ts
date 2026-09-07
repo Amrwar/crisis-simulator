@@ -5,7 +5,7 @@ import { requireAuth } from '@/lib/auth';
 import { extractTagsFromKeywords, filterValidTags, type DecisionTag } from '@/lib/game/tags';
 import { computePerformanceScore } from '@/lib/game/rules-engine';
 import { advanceTurn } from '@/lib/game/turn-engine';
-import { parseFlags } from '@/lib/json';
+import { parseFlags, parseOptions } from '@/lib/json';
 import { generateNextTurn, generateFinalReport, suggestTags } from '@/lib/llm';
 
 const DecisionSchema = z.object({
@@ -53,8 +53,12 @@ export async function POST(
     let decisionText = '';
 
     if (optionId) {
-      const options: Array<{ id: string; text: string; risk: string; tags: string[] }> =
-        JSON.parse(currentTurnRecord.options);
+      // Through the hardened reader rather than a bare `JSON.parse`: the
+      // column holds whatever the generator produced, and a row that cannot be
+      // read means the option was not on offer — a 400 the player can act on,
+      // not a 500. It also guarantees `tags` is an array of strings, which the
+      // filter below iterates.
+      const options = parseOptions(currentTurnRecord.options);
       const chosen = options.find((o) => o.id === optionId);
       if (!chosen) return NextResponse.json({ error: 'Invalid option' }, { status: 400 });
       tags = filterValidTags(chosen.tags);

@@ -489,3 +489,71 @@ describe('POST /api/simulations/[id]/turn — what a failure tells the caller', 
     expect((await readJson<{ error: string }>(response)).error).toBe('Invalid input');
   });
 });
+
+/**
+ * The options column is generated text stored as JSON. A row that predates a
+ * schema change, or that a model wrote badly, must cost the caller a 400 they
+ * can act on rather than a 500 — and must never make the handler iterate
+ * something that is not an array.
+ */
+describe('POST /api/simulations/[id]/turn — a damaged options column', () => {
+  async function corruptOptions(raw: string) {
+    await prisma.turn.updateMany({
+      where: { simulationId, turnNumber: 1 },
+      data: { options: raw },
+    });
+  }
+
+  it('refuses the decision rather than failing, when the column is not JSON', async () => {
+    await corruptOptions('[{"id":"A", "text"');
+
+    const response = await submit(simulationId, { optionId: 'A' });
+
+    expect(response.status).toBe(400);
+    expect((await readJson<{ error: string }>(response)).error).toBe('Invalid option');
+  });
+
+  it('refuses the decision when the column was never written', async () => {
+    await corruptOptions('');
+    expect((await submit(simulationId, { optionId: 'A' })).status).toBe(400);
+  });
+
+  it('refuses the decision when the column holds an object, not a list', async () => {
+    await corruptOptions('{"id":"A","text":"Negotiate"}');
+    expect((await submit(simulationId, { optionId: 'A' })).status).toBe(400);
+  });
+
+  it('leaves the turn undecided when it refuses', async () => {
+    await corruptOptions('not json at all');
+    await submit(simulationId, { optionId: 'A' });
+
+    const turn = await prisma.turn.findFirstOrThrow({
+      where: { simulationId, turnNumber: 1 },
+    });
+    expect(turn.decidedAt).toBeNull();
+  });
+
+  it('accepts an option whose tags were stored as something other than a list', async () => {
+    await corruptOptions(
+      JSON.stringify([{ id: 'A', text: 'Negotiate with the supplier', tags: 'cut_costs' }])
+    );
+
+    const response = await submit(simulationId, { optionId: 'A' });
+
+    expect(response.status).toBe(200);
+    expect((await readJson<{ tags: string[] }>(response)).tags).toEqual([]);
+  });
+
+  it('keeps the valid tags from an option whose list is partly junk', async () => {
+    await corruptOptions(
+      JSON.stringify([
+        { id: 'A', text: 'Negotiate', tags: [7, null, 'cut_costs', 'not_a_real_tag'] },
+      ])
+    );
+
+    const response = await submit(simulationId, { optionId: 'A' });
+
+    expect(response.status).toBe(200);
+    expect((await readJson<{ tags: string[] }>(response)).tags).toEqual(['cut_costs']);
+  });
+});
