@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   bestRun,
+  buildScoreHistory,
   groupBy,
   isWin,
   streakOf,
@@ -217,6 +218,84 @@ describe('streakOf', () => {
 
   it('reports no longest streak when nothing was ever won', () => {
     expect(streakOf([finished('bankruptcy', 1), finished('takeover', 2)]).longest).toBe(0);
+  });
+});
+
+describe('buildScoreHistory', () => {
+  it('is empty for a player with no runs', () => {
+    expect(buildScoreHistory([])).toEqual([]);
+  });
+
+  it('leaves unfinished runs out', () => {
+    const history = buildScoreHistory([
+      record({ status: 'active', performanceScore: 90 }),
+      record({ status: 'ended', performanceScore: 40 }),
+    ]);
+
+    expect(history.map((point) => point.score)).toEqual([40]);
+  });
+
+  it('runs oldest first, whatever order the rows arrived in', () => {
+    const history = buildScoreHistory([
+      record({ performanceScore: 30, endedAt: new Date('2025-03-01T00:00:00.000Z') }),
+      record({ performanceScore: 10, endedAt: new Date('2025-01-01T00:00:00.000Z') }),
+      record({ performanceScore: 20, endedAt: new Date('2025-02-01T00:00:00.000Z') }),
+    ]);
+
+    expect(history.map((point) => point.score)).toEqual([10, 20, 30]);
+  });
+
+  it('carries the run id and the finish as ISO-8601', () => {
+    const [point] = buildScoreHistory([
+      record({ id: 'run-x', performanceScore: 55, endedAt: new Date('2025-02-01T09:30:00.000Z') }),
+    ]);
+
+    expect(point).toEqual({
+      simulationId: 'run-x',
+      score: 55,
+      endedAt: '2025-02-01T09:30:00.000Z',
+    });
+  });
+
+  it('accepts a finish that arrived as a string', () => {
+    const [point] = buildScoreHistory([record({ endedAt: '2025-02-01T09:30:00.000Z' })]);
+    expect(point.endedAt).toBe('2025-02-01T09:30:00.000Z');
+  });
+
+  it('reports a missing finish as null rather than inventing one', () => {
+    const [point] = buildScoreHistory([record({ endedAt: null })]);
+    expect(point.endedAt).toBeNull();
+  });
+
+  /**
+   * The route used to sort this with `endedAt?.getTime() ?? 0`, which reads a
+   * missing finish as the epoch. The streak reads the same run as the most
+   * recent one, so the page claimed a run was simultaneously the newest and
+   * the oldest thing the player had done.
+   */
+  it('agrees with the streak about which completed run is the latest', () => {
+    const runs = [
+      record({ id: 'old', endingType: 'bankruptcy', endedAt: new Date('2025-01-01T00:00:00.000Z') }),
+      record({ id: 'unfinished-clock', endingType: 'growth_win', endedAt: null }),
+    ];
+
+    const history = buildScoreHistory(runs);
+    const latestOnTheChart = history[history.length - 1].simulationId;
+    const streak = streakOf(runs);
+
+    expect(latestOnTheChart).toBe('unfinished-clock');
+    // The streak reads the same run as the latest, so it reports a win streak.
+    expect(streak.currentIsLosing).toBe(false);
+  });
+
+  it('does not reorder the rows it was handed', () => {
+    const runs = [
+      record({ id: 'later', endedAt: new Date('2025-03-01T00:00:00.000Z') }),
+      record({ id: 'earlier', endedAt: new Date('2025-01-01T00:00:00.000Z') }),
+    ];
+    buildScoreHistory(runs);
+
+    expect(runs.map((r) => r.id)).toEqual(['later', 'earlier']);
   });
 });
 

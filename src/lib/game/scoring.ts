@@ -121,13 +121,23 @@ export function compareRuns(a: RankableRun, b: RankableRun): number {
 
   if (a.turnsCompleted !== b.turnsCompleted) return b.turnsCompleted - a.turnsCompleted;
 
-  const finishedGap = timeOf(a.endedAt) - timeOf(b.endedAt);
+  const finishedGap = finishedAtTime(a.endedAt) - finishedAtTime(b.endedAt);
   if (finishedGap !== 0) return finishedGap;
 
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-function timeOf(value: Date | string | null): number {
+/**
+ * When a run finished, as a sortable number.
+ *
+ * A run with no `endedAt` — or an unreadable one — sorts last, as the most
+ * recent thing that happened: the column is only null while a run has not
+ * finished, so treating it as "not yet" is the reading that matches the state.
+ * Everything that orders runs by their finish shares this, because the two
+ * places that once each had their own copy disagreed about exactly that null,
+ * and the analytics page showed the same run as both newest and oldest.
+ */
+export function finishedAtTime(value: Date | string | null): number {
   if (value === null) return Number.POSITIVE_INFINITY;
   const date = value instanceof Date ? value : new Date(value);
   const time = date.getTime();
@@ -168,7 +178,7 @@ export function isRankTie(a: RankableRun, b: RankableRun): boolean {
     a.performanceScore === b.performanceScore &&
     endingQuality(a.endingType) === endingQuality(b.endingType) &&
     a.turnsCompleted === b.turnsCompleted &&
-    timeOf(a.endedAt) === timeOf(b.endedAt)
+    finishedAtTime(a.endedAt) === finishedAtTime(b.endedAt)
   );
 }
 

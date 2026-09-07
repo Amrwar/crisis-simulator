@@ -1,4 +1,4 @@
-import { endingQuality } from '@/lib/game/scoring';
+import { endingQuality, finishedAtTime } from '@/lib/game/scoring';
 
 /**
  * Aggregating a player's whole run history.
@@ -79,7 +79,7 @@ export interface UserAnalyticsPayload {
   /** Decision tags across every decided turn, most-used first. */
   favouriteDecisions: Array<{ tag: string; count: number }>;
   /** Score of each completed run, oldest first — the "am I improving?" line. */
-  scoreHistory: Array<{ simulationId: string; score: number; endedAt: string | null }>;
+  scoreHistory: ScorePoint[];
 }
 
 /** Reduces a player's runs to the numbers the analytics page shows. */
@@ -147,9 +147,40 @@ function bestEndingOf(completed: readonly RunRecord[]): string | null {
  * player who has just lost twice sees a losing streak of two rather than a
  * stale win count.
  */
+/** One point on the "am I improving?" line. */
+export interface ScorePoint {
+  simulationId: string;
+  score: number;
+  endedAt: string | null;
+}
+
+/**
+ * The score of every completed run, oldest first.
+ *
+ * Ordered by the same `finishedAtTime` the streak uses, so the chart and the
+ * streak agree about which run is the latest. The route used to sort this
+ * itself with `endedAt?.getTime() ?? 0`, which put an unfinished-looking run at
+ * the *start* of the line while the streak read it as the most recent one.
+ */
+export function buildScoreHistory(runs: readonly RunRecord[]): ScorePoint[] {
+  return runs
+    .filter((run) => run.status === 'ended')
+    .sort((a, b) => finishedAtTime(a.endedAt) - finishedAtTime(b.endedAt))
+    .map((run) => ({
+      simulationId: run.id,
+      score: run.performanceScore,
+      endedAt: run.endedAt === null ? null : isoOf(run.endedAt),
+    }));
+}
+
+function isoOf(value: Date | string): string | null {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 export function streakOf(completed: readonly RunRecord[]): StreakSummary {
   const ordered = [...completed].sort(
-    (a, b) => finishedAt(a.endedAt) - finishedAt(b.endedAt)
+    (a, b) => finishedAtTime(a.endedAt) - finishedAtTime(b.endedAt)
   );
 
   let longest = 0;
@@ -229,12 +260,6 @@ export function tagFrequency(tagsPerTurn: ReadonlyArray<readonly string[]>): Arr
   return Array.from(counts, ([tag, count]) => ({ tag, count })).sort(
     (a, b) => b.count - a.count || a.tag.localeCompare(b.tag)
   );
-}
-
-function finishedAt(value: Date | string | null): number {
-  if (value === null) return Number.POSITIVE_INFINITY;
-  const time = (value instanceof Date ? value : new Date(value)).getTime();
-  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
 }
 
 function mean(values: readonly number[]): number | null {

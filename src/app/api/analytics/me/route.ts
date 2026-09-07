@@ -1,6 +1,7 @@
 import { guardFailed, requireUserId } from '@/lib/api/guards';
 import { ok } from '@/lib/api/respond';
 import {
+  buildScoreHistory,
   summarizeRuns,
   tagFrequency,
   type UserAnalyticsPayload,
@@ -50,14 +51,7 @@ export async function GET() {
     favouriteDecisions: tagFrequency(
       decidedTurns.map((turn) => parseJsonArray<string>(turn.tags, (v) => typeof v === 'string'))
     ),
-    scoreHistory: runs
-      .filter((run) => run.status === 'ended')
-      .sort((a, b) => (a.endedAt?.getTime() ?? 0) - (b.endedAt?.getTime() ?? 0))
-      .map((run) => ({
-        simulationId: run.id,
-        score: run.performanceScore,
-        endedAt: run.endedAt ? run.endedAt.toISOString() : null,
-      })),
+    scoreHistory: buildScoreHistory(runs),
   };
 
   return ok(payload);

@@ -162,6 +162,25 @@ describe('GET /api/analytics/me', () => {
     expect((await mine()).scoreHistory).toEqual([]);
   });
 
+  /**
+   * `endedAt` is nullable and nothing in the schema ties it to the status, so
+   * an ended run can carry no finish time. The chart and the streak have to
+   * read such a run the same way round; they once did not.
+   */
+  it('puts an ended run with no recorded finish at the end of the line', async () => {
+    await seedCompletedSimulation(user.id, {
+      performanceScore: 40,
+      endedAt: new Date('2025-02-01T00:00:00.000Z'),
+    });
+    const undated = await seedCompletedSimulation(user.id, { performanceScore: 70 });
+    await prisma.simulation.update({ where: { id: undated.id }, data: { endedAt: null } });
+
+    const history = (await mine()).scoreHistory;
+
+    expect(history.map((p) => p.score)).toEqual([40, 70]);
+    expect(history[history.length - 1].endedAt).toBeNull();
+  });
+
   it('survives a turn whose tag column is not valid JSON', async () => {
     const sim = await seedCompletedSimulation(user.id, { turnsCompleted: 2 });
     await prisma.turn.updateMany({

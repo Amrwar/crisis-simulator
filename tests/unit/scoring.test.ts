@@ -5,6 +5,7 @@ import {
   allScoreBands,
   compareRuns,
   endingQuality,
+  finishedAtTime,
   isRankTie,
   percentileFor,
   rankMedal,
@@ -126,6 +127,53 @@ describe('compareRuns', () => {
     const asDate = run({ id: 'a', endedAt: new Date('2025-06-01T00:00:00.000Z') });
 
     expect(compareRuns(asString, asDate)).toBeLessThan(0);
+  });
+});
+
+describe('finishedAtTime', () => {
+  it('reads a Date', () => {
+    expect(finishedAtTime(new Date('2025-03-12T10:00:00.000Z'))).toBe(
+      Date.parse('2025-03-12T10:00:00.000Z')
+    );
+  });
+
+  it('reads an ISO string to the same instant as the Date', () => {
+    const iso = '2025-03-12T10:00:00.000Z';
+    expect(finishedAtTime(iso)).toBe(finishedAtTime(new Date(iso)));
+  });
+
+  it('sorts a run that never recorded a finish last, not first', () => {
+    expect(finishedAtTime(null)).toBeGreaterThan(finishedAtTime(new Date('2099-01-01T00:00:00.000Z')));
+  });
+
+  it('treats an unreadable value the same as a missing one', () => {
+    expect(finishedAtTime('not a date')).toBe(finishedAtTime(null));
+  });
+
+  it('orders a list oldest first', () => {
+    const days = ['2025-01-03', null, '2025-01-01', '2025-01-02'];
+    const sorted = [...days].sort((a, b) => finishedAtTime(a) - finishedAtTime(b));
+
+    expect(sorted).toEqual(['2025-01-01', '2025-01-02', '2025-01-03', null]);
+  });
+});
+
+describe('compareRuns — the finish tie-break', () => {
+  it('puts the run that finished first ahead when everything else ties', () => {
+    const early = run({ id: 'early', endedAt: new Date('2025-01-01T00:00:00.000Z') });
+    const late = run({ id: 'late', endedAt: new Date('2025-02-01T00:00:00.000Z') });
+
+    expect([late, early].sort(compareRuns).map((r) => r.id)).toEqual(['early', 'late']);
+  });
+
+  it('puts a run with no recorded finish behind one that has one', () => {
+    const finished = run({ id: 'finished' });
+    const unknown = run({ id: 'unknown', endedAt: null });
+
+    expect([unknown, finished].sort(compareRuns).map((r) => r.id)).toEqual([
+      'finished',
+      'unknown',
+    ]);
   });
 });
 
