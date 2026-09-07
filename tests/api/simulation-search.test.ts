@@ -348,4 +348,32 @@ describe('GET /api/simulations/search — sorting and paging', () => {
   it('counts only the filtered rows', async () => {
     expect((await results('?q=Run 1')).page.total).toBe(1);
   });
+
+  // A stale bookmark or a filter that just narrowed the list both ask for a
+  // page that no longer exists. The envelope already reported the last page in
+  // that case; the rows have to come from that page too, or the dashboard
+  // renders an empty table under a "page 2 of 2" pager.
+  it('serves the last page when asked for one past the end', async () => {
+    const payload = await results('?pageSize=2&page=99');
+
+    expect(payload.page.page).toBe(2);
+    expect(payload.page.items).toHaveLength(1);
+    expect(payload.page.hasNext).toBe(false);
+    expect(payload.page.hasPrevious).toBe(true);
+  });
+
+  it('serves the same rows for a page past the end as for the last page', async () => {
+    const last = await results('?pageSize=2&page=2');
+    const beyond = await results('?pageSize=2&page=99');
+
+    expect(names(beyond)).toEqual(names(last));
+  });
+
+  it('still answers the first page when a filter matches nothing', async () => {
+    const payload = await results('?q=nonexistent-company&page=99');
+
+    expect(payload.page.page).toBe(1);
+    expect(payload.page.items).toEqual([]);
+    expect(payload.page.total).toBe(0);
+  });
 });

@@ -4,7 +4,7 @@ import { guardFailed, requireUserId } from '@/lib/api/guards';
 import { ok, validationFailed } from '@/lib/api/respond';
 import { normalizeLabel } from '@/lib/annotations';
 import { prisma } from '@/lib/db';
-import { buildPage, resolvePageRequest, toSkipTake } from '@/lib/pagination';
+import { buildPage, clampPageRequest, resolvePageRequest, toSkipTake } from '@/lib/pagination';
 import {
   SearchQuerySchema,
   appliedFilters,
@@ -33,34 +33,12 @@ export async function GET(req: NextRequest) {
   if (query.tag) query.tag = normalizeLabel(query.tag);
 
   const where = buildWhere(query, auth.value);
-  const pageRequest = resolvePageRequest(query.page, query.pageSize);
 
-  const [total, rows, labels] = await Promise.all([
+  // The count comes first because the window depends on it: a page past the
+  // end has to be pulled back before the rows are fetched, or the query skips
+  // past every row and the envelope reports a last page with nothing on it.
+  const [total, labels] = await Promise.all([
     prisma.simulation.count({ where }),
-    prisma.simulation.findMany({
-      where,
-      orderBy: buildOrderBy(query),
-      ...toSkipTake(pageRequest),
-      select: {
-        id: true,
-        industry: true,
-        difficulty: true,
-        companySize: true,
-        companyName: true,
-        status: true,
-        endingType: true,
-        performanceScore: true,
-        currentTurn: true,
-        maxTurns: true,
-        cash: true,
-        reputation: true,
-        marketShare: true,
-        notes: true,
-        createdAt: true,
-        endedAt: true,
-        tags: { select: { label: true }, orderBy: { label: 'asc' } },
-      },
-    }),
     // Every label the player uses anywhere, so the filter can offer them.
     prisma.runTag.findMany({
       where: { simulation: { userId: auth.value } },
@@ -69,6 +47,36 @@ export async function GET(req: NextRequest) {
       orderBy: { label: 'asc' },
     }),
   ]);
+
+  const pageRequest = clampPageRequest(
+    resolvePageRequest(query.page, query.pageSize),
+    total
+  );
+
+  const rows = await prisma.simulation.findMany({
+    where,
+    orderBy: buildOrderBy(query),
+    ...toSkipTake(pageRequest),
+    select: {
+      id: true,
+      industry: true,
+      difficulty: true,
+      companySize: true,
+      companyName: true,
+      status: true,
+      endingType: true,
+      performanceScore: true,
+      currentTurn: true,
+      maxTurns: true,
+      cash: true,
+      reputation: true,
+      marketShare: true,
+      notes: true,
+      createdAt: true,
+      endedAt: true,
+      tags: { select: { label: true }, orderBy: { label: 'asc' } },
+    },
+  });
 
   const items: SimulationSearchResult[] = rows.map((row) => ({
     id: row.id,

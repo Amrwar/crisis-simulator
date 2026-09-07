@@ -4,6 +4,7 @@ import {
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
   buildPage,
+  clampPageRequest,
   pageCountFor,
   pageWindow,
   paginateArray,
@@ -165,6 +166,41 @@ describe('paginateArray', () => {
     const original = [...rows];
     paginateArray(rows, { page: 2, pageSize: 3 });
     expect(rows).toEqual(original);
+  });
+});
+
+describe('clampPageRequest', () => {
+  it('leaves a page that exists alone', () => {
+    expect(clampPageRequest({ page: 2, pageSize: 10 }, 35)).toEqual({ page: 2, pageSize: 10 });
+  });
+
+  it('pulls a page past the end back to the last real one', () => {
+    expect(clampPageRequest({ page: 99, pageSize: 10 }, 35).page).toBe(4);
+  });
+
+  it('lands on the first page when there is nothing to show', () => {
+    expect(clampPageRequest({ page: 99, pageSize: 10 }, 0).page).toBe(1);
+  });
+
+  it('raises a page below one', () => {
+    expect(clampPageRequest({ page: -4, pageSize: 10 }, 35).page).toBe(1);
+  });
+
+  it('keeps the page size it was handed', () => {
+    expect(clampPageRequest({ page: 99, pageSize: 7 }, 35).pageSize).toBe(7);
+  });
+
+  it('produces a window that actually holds rows', () => {
+    const clamped = clampPageRequest({ page: 99, pageSize: 10 }, 35);
+    const { skip } = toSkipTake(clamped);
+
+    expect(skip).toBeLessThan(35);
+  });
+
+  it('agrees with the page buildPage reports for the same request', () => {
+    const request = { page: 99, pageSize: 10 };
+
+    expect(clampPageRequest(request, 35).page).toBe(buildPage([], 35, request).page);
   });
 });
 

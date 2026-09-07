@@ -52,6 +52,19 @@ export function toSkipTake({ page, pageSize }: PageRequest): { skip: number; tak
   return { skip: (page - 1) * pageSize, take: pageSize };
 }
 
+/**
+ * Pulls a requested window back onto a list that actually has `total` rows.
+ *
+ * Asking for page 99 of a three-page list is a real thing a bookmark does, and
+ * the honest answer is the last page rather than an empty one. Clamping has to
+ * happen *before* the rows are fetched: a query skipping past the end returns
+ * nothing, and the envelope would then report a last page holding no items.
+ */
+export function clampPageRequest(request: PageRequest, total: number): PageRequest {
+  const pageCount = pageCountFor(total, request.pageSize);
+  return { ...request, page: Math.min(Math.max(1, request.page), pageCount) };
+}
+
 /** How many pages `total` rows occupy. Zero rows is still one (empty) page. */
 export function pageCountFor(total: number, pageSize: number): number {
   if (pageSize <= 0) return 1;
@@ -66,7 +79,7 @@ export function pageCountFor(total: number, pageSize: number): number {
  */
 export function buildPage<T>(items: T[], total: number, request: PageRequest): Page<T> {
   const pageCount = pageCountFor(total, request.pageSize);
-  const page = Math.min(Math.max(1, request.page), pageCount);
+  const { page } = clampPageRequest(request, total);
 
   return {
     items,
@@ -81,14 +94,10 @@ export function buildPage<T>(items: T[], total: number, request: PageRequest): P
 
 /** Pages an already-loaded array. Used where the rows are computed, not queried. */
 export function paginateArray<T>(rows: readonly T[], request: PageRequest): Page<T> {
-  const pageCount = pageCountFor(rows.length, request.pageSize);
-  const page = Math.min(Math.max(1, request.page), pageCount);
-  const start = (page - 1) * request.pageSize;
+  const clamped = clampPageRequest(request, rows.length);
+  const { skip, take } = toSkipTake(clamped);
 
-  return buildPage(rows.slice(start, start + request.pageSize), rows.length, {
-    ...request,
-    page,
-  });
+  return buildPage(rows.slice(skip, skip + take), rows.length, clamped);
 }
 
 /**
