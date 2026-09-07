@@ -185,10 +185,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id: sim.id }, { status: 201 });
   } catch (e) {
+    // Logged in full server-side; the caller gets the fact of the failure and
+    // nothing else. Whatever threw is a database error or a model-provider
+    // error, and both carry connection strings, request URLs and account
+    // identifiers in their message.
     console.error('[create-sim]', e);
-    return NextResponse.json(
-      { error: 'Failed to create simulation', details: String(e) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to create simulation' }, { status: 500 });
   }
 }

@@ -134,7 +134,9 @@ function NewSimForm() {
 
       const data = await res.json();
       if (!res.ok) {
-        setError((data.error || 'Failed to create simulation') + (data.details ? ` — ${data.details}` : ''));
+        // `details` is a zod field map on a 400 and absent otherwise, so it
+        // was never a string worth appending — it rendered as [object Object].
+        setError(data.error || 'Failed to create simulation');
         return;
       }
 

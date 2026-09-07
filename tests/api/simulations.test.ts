@@ -183,6 +183,51 @@ describe('POST /api/simulations', () => {
   });
 });
 
+/**
+ * Whatever throws inside these handlers is a Prisma error or a model-provider
+ * error, and both put connection strings, request URLs and account identifiers
+ * into their message. None of that may reach the browser.
+ */
+describe('POST /api/simulations — what a failure tells the caller', () => {
+  const validBody = { industry: 'Retail', difficulty: 'Medium', companySize: 'Small' };
+  const SECRET = 'postgresql://admin:hunter2@db.internal:5432/crisis';
+
+  beforeEach(() => {
+    generateInitialTurnMock.mockRejectedValue(new Error(`connect ECONNREFUSED ${SECRET}`));
+  });
+
+  it('does not put the thrown message in the response', async () => {
+    const response = await createSimulation(jsonRequest('/api/simulations', validBody));
+
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(await readJson(response))).not.toContain('hunter2');
+  });
+
+  it('does not put the thrown message anywhere in the body, under any key', async () => {
+    const response = await createSimulation(jsonRequest('/api/simulations', validBody));
+    const serialized = JSON.stringify(await readJson(response));
+
+    expect(serialized).not.toContain('ECONNREFUSED');
+    expect(serialized).not.toContain('db.internal');
+    expect(serialized).not.toContain('postgresql');
+  });
+
+  it('answers with the failure and nothing else', async () => {
+    const response = await createSimulation(jsonRequest('/api/simulations', validBody));
+
+    expect(await readJson(response)).toEqual({ error: 'Failed to create simulation' });
+  });
+
+  it('still describes a rejected body, which is the caller own doing', async () => {
+    const response = await createSimulation(
+      jsonRequest('/api/simulations', { ...validBody, industry: 'Mining' })
+    );
+
+    expect(response.status).toBe(400);
+    expect((await readJson<{ error: string }>(response)).error).toBe('Invalid input');
+  });
+});
+
 describe('GET /api/simulations', () => {
   it('answers 401 for an anonymous visitor', async () => {
     signOut();

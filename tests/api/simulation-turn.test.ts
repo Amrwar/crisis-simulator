@@ -459,3 +459,33 @@ describe('POST /api/simulations/[id]/turn — achievements', () => {
     expect(JSON.parse(simulation.flags).was_in_crisis).toBe(true);
   });
 });
+
+describe('POST /api/simulations/[id]/turn — what a failure tells the caller', () => {
+  it('does not put the thrown message in the response', async () => {
+    nextTurnMock.mockRejectedValue(
+      new Error('401 Incorrect API key provided: sk-live-abcdef. Check your account.')
+    );
+
+    const response = await submit(simulationId, { optionId: 'A' });
+    const serialized = JSON.stringify(await readJson(response));
+
+    expect(response.status).toBe(500);
+    expect(serialized).not.toContain('sk-live-abcdef');
+    expect(serialized).not.toContain('Incorrect API key');
+  });
+
+  it('answers with the failure and nothing else', async () => {
+    nextTurnMock.mockRejectedValue(new Error('provider exploded'));
+
+    const response = await submit(simulationId, { optionId: 'A' });
+
+    expect(await readJson(response)).toEqual({ error: 'Failed to process turn' });
+  });
+
+  it('still describes a rejected body, which is the caller own doing', async () => {
+    const response = await submit(simulationId, { optionId: 'Z' });
+
+    expect(response.status).toBe(400);
+    expect((await readJson<{ error: string }>(response)).error).toBe('Invalid input');
+  });
+});

@@ -322,10 +322,10 @@ export async function POST(
       finalReport: finalReportData,
     });
   } catch (e) {
+    // Same rule as the create route: the failure is logged where an operator
+    // can read it, and the player is told only that the turn did not go
+    // through.
     console.error('[submit-turn]', e);
-    return NextResponse.json(
-      { error: 'Failed to process turn', details: String(e) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to process turn' }, { status: 500 });
   }
 }
